@@ -13,7 +13,7 @@ resources:
     branch: master
     private_key: {{git_private_key}}
 
-- name: pivnet-opsman-product
+- name: pcf-ops-manager
   type: pivnet
   source:
     api_token: {{pivnet_token}}
@@ -36,8 +36,8 @@ jobs:
   - aggregate:
     - get: pcf-pipelines
     - get: pivnet-opsman-product
+      resource: pcf-ops-manager
       params: {globs: ["*.ova"]}
-      trigger: true
 
   - task: deploy
     file: pcf-pipelines/install-pcf/vsphere/tasks/import-opsman/task.yml
@@ -68,7 +68,7 @@ jobs:
   plan:
   - aggregate:
     - get: pcf-pipelines
-    - get: pivnet-opsman-product
+    - get: pcf-ops-manager
       params: {globs: []}
       passed: [deploy-opsman]
       trigger: true
@@ -146,7 +146,7 @@ jobs:
   plan:
   - aggregate:
     - get: pcf-pipelines
-    - get: pivnet-opsman-product
+    - get: pcf-ops-manager
       params: {globs: []}
       passed: [configure-director]
       trigger: true
@@ -165,7 +165,7 @@ jobs:
     - get: pivnet-product
       resource: elastic-runtime
       params: {globs: ["*.pivotal"]}
-    - get: pivnet-opsman-product
+    - get: pcf-ops-manager
       params: {globs: []}
       passed: [deploy-director]
       trigger: true
@@ -185,7 +185,7 @@ jobs:
   plan:
   - aggregate:
     - get: pcf-pipelines
-    - get: pivnet-opsman-product
+    - get: pcf-ops-manager
       params: {globs: []}
       passed: [upload-ert]
       trigger: true
@@ -221,7 +221,6 @@ jobs:
       LOGGREGATOR_ENDPOINT_PORT: {{loggregator_endpoint_port}}
       SSL_TERMINATION: {{ssl_termination_point}}
       SSL_CERT: {{ssl_cert}}
-      OPS_MGR_GENERATE_SSL_ENDPOINT: {{om_generate_ssl_endpoint}}
       SSL_PRIVATE_KEY: {{ssl_private_key}}
       DISABLE_HTTP_PROXY: {{disable_http_proxy}}
       TCP_ROUTING: {{tcp_routing}}
@@ -295,6 +294,8 @@ jobs:
       DOPPLER_INSTANCES: {{doppler_instances}}
       LOGGREGATOR_TC_INSTANCES: {{loggregator_traffic_controller_instances}}
       TCP_ROUTER_INSTANCES: {{tcp_router_instances}}
+      SYSLOG_ADAPTER_INSTANCES: {{syslog_adapter_instances}}
+      SYSLOG_SCHEDULER_INSTANCES: {{syslog_scheduler_instances}}
 
   - task: disable-errands
     file: pcf-pipelines/tasks/disable-errands/task.yml
@@ -307,6 +308,17 @@ jobs:
 
   - task: deploy
     file: pcf-pipelines/tasks/apply-changes/task.yml
+    params:
+      OPSMAN_URI: {{opsman_uri}}
+      OPSMAN_USERNAME: {{opsman_admin_username}}
+      OPSMAN_PASSWORD: {{opsman_admin_password}}
+
+- name: wipe-env
+  plan:
+  - aggregate:
+    - get: pcf-pipelines
+  - task: wipe
+    file: pcf-pipelines/install-pcf/vsphere/tasks/wipe-env/task.yml
     params:
       OPSMAN_URI: {{opsman_uri}}
       OPSMAN_USERNAME: {{opsman_admin_username}}

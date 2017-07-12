@@ -1,26 +1,8 @@
-#!/bin/bash -e
+#!/bin/bash
 
-function generate_cert {
-  local domains="$1"
+set -eu
 
-  local data=$(echo $domains | jq --raw-input -c '{"domains": (. | split(" "))}')
-
-  local response=$(
-    om-linux \
-      --target "https://${OPS_MGR_HOST}" \
-      --username "$OPS_MGR_USR" \
-      --password "$OPS_MGR_PWD" \
-      --skip-ssl-validation \
-      curl \
-      --silent \
-      --path "$OPS_MGR_GENERATE_SSL_ENDPOINT" \
-      -x POST \
-      -d $data
-    )
-
-  echo "$response"
-}
-
+source pcf-pipelines/functions/generate_cert.sh
 
 if [[ -z "$SSL_CERT" ]]; then
   domains=(
@@ -69,6 +51,7 @@ cf_network=$(
 )
 
 cf_resources=$(
+  set +e
   read -d'%' -r input <<EOF
   {
     "backup-prepare": $BACKUP_PREPARE_INSTANCES,
@@ -90,12 +73,15 @@ cf_resources=$(
     "nats": $NATS_INSTANCES,
     "nfs_server": $NFS_SERVER_INSTANCES,
     "router": $ROUTER_INSTANCES,
+    "syslog_adapter": $SYSLOG_ADAPTER_INSTANCES,
+    "syslog_scheduler": $SYSLOG_SCHEDULER_INSTANCES,
     "tcp_router": $TCP_ROUTER_INSTANCES,
     "uaa": $UAA_INSTANCES,
     "uaadb": $UAADB_INSTANCES
   }
   %
 EOF
+  set -e
 
   echo "$input" | jq \
     'map_values(. = {

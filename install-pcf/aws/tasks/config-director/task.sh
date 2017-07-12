@@ -1,5 +1,6 @@
 #!/bin/bash
-set -ex
+
+set -eu
 
 aws_access_key_id=`terraform state show -state terraform-state/terraform.tfstate aws_iam_access_key.pcf_iam_user_access_key | grep ^id | awk '{print $3}'`
 aws_secret_access_key=`terraform state show -state terraform-state/terraform.tfstate aws_iam_access_key.pcf_iam_user_access_key | grep ^secret | awk '{print $3}'`
@@ -49,6 +50,17 @@ read -r -d '' director_configuration <<EOF
   }
 }
 EOF
+
+resource_configuration=$(cat <<-EOF
+{
+  "director": {
+    "instance_type": {
+      "id": "m4.large"
+    }
+  }
+}
+EOF
+)
 
 read -r -d '' az_configuration <<EOF
 {
@@ -174,6 +186,7 @@ jsons=(
   "$networks_configuration"
   "$network_assignment"
   "$security_configuration"
+  "$resource_configuration"
 )
 
 for json in "${jsons[@]}"; do
@@ -192,4 +205,5 @@ om-linux \
   --az-configuration "$az_configuration" \
   --networks-configuration "$networks_configuration" \
   --network-assignment "$network_assignment" \
-  --security-configuration "$security_configuration"
+  --security-configuration "$security_configuration" \
+  --resource-configuration "$resource_configuration"

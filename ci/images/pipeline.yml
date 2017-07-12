@@ -15,6 +15,14 @@ resources:
     username: czero
     password: {{czero_dockerhub_password}}
 
+- name: pcf-pipelines-image-rc
+  type: docker-image
+  source:
+    repository: czero/cflinuxfs2
+    tag: release-candidate
+    username: czero
+    password: {{czero_dockerhub_password}}
+
 - name: cflinuxfs2
   type: docker-image
   source:
@@ -26,7 +34,14 @@ resources:
   source:
     user: pivotal-cf
     repository: om
-    access_token: {{github_token}}
+    access_token: {{images_pipeline_github_token}}
+
+- name: yaml-patch 
+  type: github-release
+  source:
+    user: krishicks
+    repository: yaml-patch 
+    access_token: {{images_pipeline_github_token}}
 
 - name: cf-cli-tarball
   type: s3
@@ -40,32 +55,55 @@ resources:
   source:
     user: pivotal-cf
     repository: cliaas
-    access_token: {{github_token}}
+    access_token: {{images_pipeline_github_token}}
 
 - name: pivnet-cli
   type: github-release
   source:
     user: pivotal-cf
     repository: pivnet-cli
-    access_token: {{github_token}}
+    access_token: {{images_pipeline_github_token}}
 
 - name: govc
   type: github-release
   source:
     user: vmware
     repository: govmomi
-    access_token: {{github_token}}
+    access_token: {{images_pipeline_github_token}}
 
 - name: om-beta
   type: github-release
   source:
     user: c0-ops
     repository: om
-    access_token: {{github_token}}
+    access_token: {{images_pipeline_github_token}}
+
+- name: stemcell-downloader
+  type: github-release
+  source:
+    user: pivotal-cf
+    repository: pcf-product-stemcell-downloader
+    access_token: {{images_pipeline_github_token}}
+
+- name: s3-rootfs
+  type: s3
+  source:
+    access_key_id: {{concourse_s3_aws_access_key_id}}
+    secret_access_key: {{concourse_s3_aws_secret_access_key}}
+    region_name: us-east-1
+    bucket: czero-images
+    versioned_file: "czero-cflinuxfs2-rootfs.tgz"
+
+- name: steamroll
+  type: github-release
+  source:
+    user: krishicks
+    repository: concourse-pipeline-steamroller
+    access_token: {{images_pipeline_github_token}}
 
 jobs:
 - name: build-pcf-pipelines-image
-  serial: true
+  serial_groups: [pcf-pipelines-image]
   plan:
   - aggregate:
     - get: pcf-pipelines
@@ -73,6 +111,8 @@ jobs:
     - get: cflinuxfs2
       trigger: true
       params: {save: true}
+    - get: yaml-patch 
+      params: {globs: ["*linux*"]}
     - get: om
       params: {globs: ["*linux*"]}
     - get: cf-cli-tarball
@@ -85,6 +125,10 @@ jobs:
     - get: om-beta
       params: {globs: ["*linux*"]}
       version: { tag: '0.17-beta.0' }
+    - get: stemcell-downloader
+      params: {globs: ["*linux*"]}
+    - get: steamroll
+      params: {globs: ["*linux*"]}
 
   - task: prepare-workspace
     config:
@@ -95,11 +139,14 @@ jobs:
       inputs:
       - name: pcf-pipelines
       - name: om
+      - name: yaml-patch 
       - name: cf-cli-tarball
       - name: cliaas
       - name: pivnet-cli
       - name: govc
       - name: om-beta
+      - name: stemcell-downloader
+      - name: steamroll
       outputs:
       - name: workspace
       run:
@@ -111,6 +158,9 @@ jobs:
 
           cp om/om-linux workspace
           chmod +x workspace/om-linux
+
+          cp yaml-patch/yaml_patch_linux workspace
+          chmod +x workspace/yaml_patch_linux
 
           tar -C workspace -xf cf-cli-tarball/*.tgz cf
           chmod +x workspace/cf
@@ -125,7 +175,98 @@ jobs:
           cp govc/govc_linux_amd64 workspace/govc
           chmod +x workspace/govc
 
-  - put: pcf-pipelines-image
+          cp om-beta/om-linux workspace/om-linux-beta
+          chmod +x workspace/om-linux-beta
+
+          cp stemcell-downloader/stemcell-downloader-linux workspace/stemcell-downloader
+          chmod +x workspace/stemcell-downloader
+
+          cp steamroll/steamroll_linux workspace/steamroll
+          chmod +x workspace/steamroll
+
+  - put: pcf-pipelines-image-rc
     params:
       load_base: cflinuxfs2
       build: workspace
+
+- name: test-pcf-pipelines-image
+  serial_groups: [pcf-pipelines-image]
+  plan:
+  - get: pcf-pipelines-image-rc
+    trigger: true
+    passed: [build-pcf-pipelines-image]
+    params:
+      skip_download: true
+  - task: test-for-required-binaries
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: czero/cflinuxfs2
+          tag: release-candidate
+      run:
+        path: sh
+        args:
+        - -c
+        - |
+          set -e
+          which om-linux
+          which yaml_patch_linux
+          which cf
+          which cliaas-linux
+          which pivnet-cli
+          which govc
+          which om-linux-beta
+          which stemcell-downloader
+          which jq
+          which terraform
+          which gcloud
+          which gem
+          which pip
+          which uaac
+          which aws
+          which openstack
+          which neutron
+          which steamroll
+
+- name: promote-image
+  serial_groups: [pcf-pipelines-image]
+  plan:
+  - get: pcf-pipelines-image-rc
+    passed: [test-pcf-pipelines-image]
+    trigger: true
+    params:
+      save: true
+  - put: pcf-pipelines-image
+    params:
+      load: pcf-pipelines-image-rc
+      tag_as_latest: true
+
+- name: create-czero-cflinuxfs2-tarball
+  plan:
+  - get: docker-image-resource
+    resource: pcf-pipelines-image
+  - task: create-tarball
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: busybox
+      inputs:
+      - name: docker-image-resource
+      outputs:
+      - name: image-tarball
+      run:
+        path: sh
+        args:
+        - -c
+        - |
+          set -e
+
+          echo "Creating tarball..."
+          tar czf image-tarball/czero-cflinuxfs2.tgz -C image .
+  - put: s3-rootfs
+    params:
+      file: image-tarball/czero-cflinuxfs2.tgz

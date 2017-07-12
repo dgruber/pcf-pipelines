@@ -12,6 +12,21 @@ variable "az1" {}
 variable "az2" {}
 variable "az3" {}
 
+/*
+* used for configuring ingress rules to ops manager vm
+*/
+variable "opsman_allow_ssh" {default = false}
+variable "opsman_allow_https" {default = false}
+variable "opsman_allow_ssh_cidr_ranges" {
+    type = "list"
+    default = ["0.0.0.0/32"]
+}
+variable "opsman_allow_https_cidr_ranges" {
+    type = "list"
+    default = ["0.0.0.0/32"]
+}
+
+
 variable "opsman_instance_type" {
     description = "Instance Type for OpsMan"
     default = "m3.large"

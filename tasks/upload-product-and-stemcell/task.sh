@@ -1,6 +1,8 @@
-#!/bin/bash -e
+#!/bin/bash
 
-if [[ ! -z "$NO_PROXY" ]]; then
+set -eu
+
+if [[ -n "$NO_PROXY" ]]; then
   echo "$OM_IP $OPS_MGR_HOST" >> /etc/hosts
 fi
 
@@ -44,4 +46,4 @@ if [ -n "$STEMCELL_VERSION" ]; then
 fi
 
 FILE_PATH=`find ./pivnet-product -name *.pivotal`
-om-linux -t https://$OPS_MGR_HOST -u $OPS_MGR_USR -p $OPS_MGR_PWD -k upload-product -p $FILE_PATH
+om-linux -t https://$OPS_MGR_HOST -u $OPS_MGR_USR -p $OPS_MGR_PWD -k --request-timeout 3600 upload-product -p $FILE_PATH
